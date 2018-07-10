@@ -1,0 +1,191 @@
+import { Injectable } from '@angular/core';
+import { BaseService } from '../base.service';
+import { Subject } from 'rxjs/Subject';
+
+import 'rxjs/add/observable/throw';
+import 'rxjs/add/operator/catch';
+import 'rxjs/add/operator/map';
+
+import { API_BASE_URL } from '../../eds.config';
+
+@Injectable()
+export class RuleService extends BaseService {
+	subject = new Subject();
+	rules = [];
+
+	getParams () {
+		return JSON.parse(sessionStorage.getItem('searchParams'));
+	}
+
+	createRule (rules) {
+		const url = `${ API_BASE_URL }/v1/cpp/rules`;
+
+		return this.doPost(url, rules, this.extractRuleData);
+	}
+
+	extractRuleData (res) {
+		return res;
+	}
+
+
+	getData () {
+		return this.rules;
+	}
+
+	setData (data) {
+		this.rules = data;
+	}
+
+	fetch (inputData) {
+		const url = `${ API_BASE_URL }/v1/cpp/rules/search`,
+			finalObject = {};
+
+		finalObject.ruleData = this.getRuleBody(inputData);
+
+		if (null === inputData[0]) {
+			finalObject.ruleData.CHUNK = '1';
+		}
+
+		if (inputData[1] && inputData[2]) {
+			const sort = {};
+
+			sort.sortBy = inputData[1];
+			sort.sortOrder = inputData[2];
+			finalObject.sort = sort;
+		}
+
+		return this.doPost(url, finalObject, this.extractData);
+	}
+
+	fetchDeActivatedRules (inputData, chuckSize) {
+		var url = `${ API_BASE_URL }/v1/cpp/rules/search`;
+		var finalObject = {};
+
+		finalObject.ruleData = this.getDeActivateRuleBody(inputData, chuckSize);
+
+		if (inputData[1] && inputData[2]) {
+			var sort = {};
+
+			sort.sortBy = inputData[1];
+			sort.sortOrder = inputData[2];
+			finalObject.sort = sort;
+		}
+		return this.doPost(url, finalObject, this.extractData);
+	}
+	fetchPendingRules (inputData) {
+		const url = `${ API_BASE_URL }/v1/cpp/rules/search`,
+			finalObject = {};
+
+		finalObject.ruleData = this.getPendingRuleBody(inputData);
+
+		if (null === inputData[0]) {
+			finalObject.ruleData.CHUNK = '1';
+		}
+
+		if (inputData[1] && inputData[2]) {
+			const sort = {};
+
+			sort.sortBy = inputData[1];
+			sort.sortOrder = inputData[2];
+			finalObject.sort = sort;
+		}
+
+		return this.doPost(url, finalObject, this.extractData);
+	}
+	getPendingRuleBody (inputData) {
+		var item = {};
+
+		if (inputData[0]) {
+			item.CHUNK = inputData[0];
+		}
+		item.CHUNK_SIZE = '50';
+		item.activeSW = 'P';
+		return item;
+	}
+	getDeActivateRuleBody (inputData, chunkSize) {
+		var item = {};
+
+		if (inputData[0]) {
+			item.CHUNK = inputData[0];
+		}
+		item.CHUNK_SIZE = String(chunkSize);
+		item.cppArr = inputData[3];
+		return item;
+	}
+
+
+	getRuleBody (inputData) {
+		const item = {},
+			searchParams = this.getParams();
+
+		if (searchParams) {
+			if ('undefined' !== typeof searchParams.ruleId) {
+				item.ruleId = searchParams.ruleId;
+			}
+
+			if ('undefined' !== typeof searchParams.locationIdValue) {
+				item.locationIdValue = searchParams.locationIdValue;
+			}
+			if ('undefined' !== typeof searchParams.locationIdClause) {
+				item.locationIdClause = searchParams.locationIdClause;
+			}
+
+			if ('undefined' !== typeof searchParams.localTxnAmountVal) {
+				item.localTxnAmountVal = searchParams.localTxnAmountVal;
+			}
+			if ('undefined' !== typeof searchParams.localTxnAmountClause) {
+				item.localTxnAmountClause = searchParams.localTxnAmountClause;
+			}
+
+			if ('undefined' !== typeof searchParams.timeValue) {
+				item.timeValue = searchParams.timeValue;
+			}
+			if ('undefined' !== typeof searchParams.timeUnit) {
+				item.timeUnit = searchParams.timeUnit;
+			}
+
+			if ('undefined' !== typeof searchParams.issuerCntryValue) {
+				item.issuerCntryValue = searchParams.issuerCntryValue;
+			}
+			if ('undefined' !== typeof searchParams.issuerCntryClause) {
+				item.issuerCntryClause = searchParams.issuerCntryClause;
+			}
+
+			if ('undefined' !== typeof searchParams.activeSW) {
+				item.activeSW = searchParams.activeSW;
+			}
+		}
+
+		if (inputData[0]) {
+			item.CHUNK = inputData[0];
+		}
+		item.CHUNK_SIZE = '50';
+		return item;
+	}
+
+	extractData (resp) {
+		const rulesData = {},
+			res = resp.json();
+
+		rulesData.ruleList = res.ruleList;
+		rulesData.totalRecordFound = res.totalRecordCount;
+		rulesData.sort = res.sort;
+		rulesData.chunk = res.chunk;
+		rulesData.chunkSize = res.chunkSize;
+		console.log(`Total records returned: ${ rulesData.totalRecordFound }`);
+		return rulesData;
+	}
+
+	activatePendingConfigurations (data, isActivate) {
+		const url = `${ API_BASE_URL }/v1/cpp/updateRuleStatus/${ isActivate }`;
+
+		return this.doPost (url, data, this.extractRuleData);
+	}
+
+	fetchPendingRuleCounts () {
+		const url = `${ API_BASE_URL }/v1/cpp/ruleCount/P`;
+
+		return this.doGet (url, this.extractRuleData);
+	}
+
+}
