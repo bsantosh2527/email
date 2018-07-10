@@ -1,0 +1,727 @@
+// list-deactivate
+import { Component, AfterViewInit, ViewEncapsulation, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
+import { TranslateService } from 'ng2-translate/ng2-translate';
+import { GridService } from 'ss-module-ag-grid/dist/AgGrid';
+import { RuleService } from '../../services/rule/rule.service';
+import { PaginationParms } from './pagination.model';
+import template from './list-deactivated-rules.template.html';
+import { Data } from '../../services/shared.service';
+import { ToastsManager } from 'ng2-toastr/ng2-toastr';
+import { UploadService } from '../../services/upload/upload.service';
+
+
+@Component({
+	selector: 'list-deactivate-rule',
+	template,
+	providers: [ RuleService, UploadService ],
+	encapsulation: ViewEncapsulation.None
+})
+export class ListDeactivateRuleComponent implements AfterViewInit {
+
+	@ViewChild('pageValue') pageValue;
+	@ViewChild('listGrid') listGrid;
+	@ViewChild('confirmationDialog') confirmationDialog;
+
+	constructor (translateService: TranslateService, elementRef: ElementRef, router: Router, route: ActivatedRoute, gridService: GridService, ruleService: RuleService, data: Data, toastr: ToastsManager, cdr: ChangeDetectorRef, uploadService: UploadService) {
+		// this.selectedRows = [];
+
+		var me = this;
+
+		me.cdr = cdr;
+		me.data = data;
+		me.translateService = translateService;
+		me.gridService = gridService;
+		me.ruleService = ruleService;
+		me.uploadService = uploadService;
+		me.router = router;
+		me.gridOptions = me.setGridOptions();
+		me.pagination = new PaginationParms();
+		me.toastr = toastr;
+		me.elementRef = elementRef;
+		me.totalSelectedInPage = 0;
+		me.totalSelectedRows = 0;
+		me.selectedRules = new Map();
+		me.disableDownloadButton = 'true';
+		me.operator = 'EQUAL';
+		me.listOpen = false;
+		me.disableDeactiveBtn = false;
+		me.deSelectedRulesArray = [];
+		me.countryNames = [];
+		me.rules = [];
+		me.route = route;
+		me.confirmationMessage = 'Deactivate Selected Rules?';//'Uploading this file will delete corresponding rules. Do you want to proceed with uploading this file?';
+		me.confirmDialogTitle = '';
+		me.translateService.get([
+			'EDS.LIST_RULE.TITLE'
+		]).subscribe(values => {
+			me.title = values['EDS.LIST_RULE.TITLE'];
+		});
+	}
+	setGridOptions () {
+		return {
+			rowSelection: 'multiple',
+			enableColResize: true,
+			suppressRowHoverClass: true,
+			suppressDragLeaveHidesColumns: true,
+			colWidth: 255,
+			suppressCellSelection: true,
+			suppressRowClickSelection: true,
+			enableServerSideSorting: true,
+			sortingOrder: [ 'asc', 'desc' ],
+			onRowSelected: event => {
+				this.updateSelectedRules(event);
+			},
+			processRowPostCreate: event => {
+				this.selectAllRows(event);
+			},
+			overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading</span>'
+		};
+	}
+
+	ngAfterViewInit () {
+
+		setTimeout(function(){
+			di.pageName = "Deactivate Rules List";
+			 if(_satellite){
+				_satellite.track("pageLoad");
+			 }
+		 },100);
+		
+		
+
+		this.selectedRules = new Map();
+		this.onResize();
+		this.initializeGrid();
+
+		this.loadRuleList();
+		this.cdr.detectChanges();
+	}
+
+	onResize () {
+		this.width = '100%';
+		this.height = `${ Math.max(window.innerHeight - 440, 0) }px`;
+	}
+
+	// Method to initialize the grid ColumnDefs
+	initializeGrid () {
+		var me = this;
+
+		me.translateService.get([
+			'EDS.LIST_RULE_ITEMS.RULE_ID',
+			'EDS.LIST_RULE_ITEMS.CREATED_DATE',
+			'EDS.LIST_RULE_ITEMS.LOCATION_ID',
+			'EDS.LIST_RULE_ITEMS.ISSUER_COUNTRY',
+			'EDS.LIST_RULE_ITEMS.LOCAL_CURRENCY_AMOUNT',
+			'EDS.LIST_RULE_ITEMS.STATUS',
+			'EDS.LIST_RULE_ITEMS.DATE_RANGE',
+			'EDS.LIST_RULE_ITEMS.USER',
+			'EDS.LIST_RULE_ITEMS.LAST_UPDATED_DATE'
+		]).subscribe(values => {
+			me.locale = values;
+			me.ruleColumnDefs = me.coldefs(this.gridService.checkboxColumn(me.gridOptions.api));
+		});
+	}
+
+	setSort (id) {
+		const name = `${ id }_GRID_STATE_STORE`,
+			state = JSON.parse(localStorage.getItem(name));
+
+		if (!state || 0 === state.sort.length) {
+			this.sortField = 'ruleId';
+			this.sortOrder = 'asc';
+		} else {
+			for (let i = 0; i < state.sort.length; i++) {
+				const item = state.sort[i];
+
+				this.sortField = item.colId;
+				this.sortOrder = item.sort;
+			}
+		}
+	}
+
+	setListValue (id, values) {
+		this.issCountryField = values.filter(item => item.selected).map(item => item.id);
+	}
+
+	setPageData (response) {
+		if (response) {
+			this.ruleData = response;
+			this.ruleListData = this.ruleData.ruleList;
+			if ('undefined' === typeof this.ruleListData || 0 === this.ruleData.totalRecordFound) {
+				console.log('setPagedata und');
+				//	this.gridOptions.api.showNoRowsOverlay();
+				return;
+			}
+			this.gridOptions.api.hideOverlay();
+			this.pagination.copyFrom(this.ruleData);
+			this.gridService.loadState('LIST_DEACTIVATE_RULE', this.gridOptions.api, this.gridOptions.columnApi);
+			this.currentSortField = this.sortField;
+			this.currentSortOrder = this.sortOrder;
+		}
+	}
+
+	loadRuleList () {
+		var iscall;
+		this.totalSelectedInPage = 0;
+		this.setSort('LIST_DEACTIVATE_RULE');
+		this.gridOptions.api.showLoadingOverlay();
+		const response = JSON.parse(sessionStorage.getItem('startPageResp'));
+
+		if (response) {
+			if (0 === this.pagination.chunk) {
+				response.ruleList = JSON.parse(response.ruleList);
+				this.setPageData(response);
+				this.gridOptions.api.hideOverlay();
+			}
+		}	 else {
+			iscall = this.ruleService.fetch([ null, this.sortField, this.sortOrder.toUpperCase() ]);
+			iscall.subscribe(pageResponse => {
+				this.setPageData(pageResponse);
+				this.gridOptions.api.hideOverlay();
+			}, error => {
+				this.errorMessage = error;
+			});
+		}
+	}
+
+	activeSWCellRenderer (params) {
+		if (params.data.errorDescription) {
+			return value = ` Invalid <i class="fa fa-exclamation-circle" style="color:red;font-size:17px" title=" ${ params.data.errorDescription }"></i>`;
+		}
+		var value = params.data.activeSW;
+		if ('Y' === value) {
+			value = `ACTIVE`;
+		}
+		if ('N' === value) {
+			value = `INACTIVE`;
+		}
+		if ('P' === value) {
+			value = `PENDING`;
+		}
+		return value;
+	}
+
+	createDateCellRenderer (params) {
+		if (params.value) {
+			const date = new Date(Number(params.value)),
+				year = date.getFullYear(),
+				blankSpace = ' ';
+
+
+			let mon = date.getMonth() + 1,
+				day = date.getDate(),
+				hr = date.getHours(),
+				min = date.getMinutes() + 1,
+				sec = date.getSeconds(),
+				formattedDate = '';
+
+
+			if (mon < 10) {
+				mon = `0${ mon }`;
+			}
+			if (day < 10) {
+				day = `0${ day }`;
+			}
+			if (hr < 10) {
+				hr = `0${ hr }`;
+			}
+			if (min < 10) {
+				min = `0${ min }`;
+			}
+			if (sec < 10) {
+				sec = `0${ sec }`;
+			}
+			formattedDate = [mon, day, year].join('/') + blankSpace + [hr, min, sec].join(':');
+
+			return formattedDate;
+		}
+		return '-';
+	}
+
+	issuerCntryValueCellRenderer (params) {
+		var value = params.data.issuerCntryValue,
+			clause = params.data.issuerCntryClause,
+			formatted = '',
+			blankSpace = ' ';
+
+		if ('equals' === clause && null !== value && 'all' !== value) {
+			clause = `is equal to`;
+			formatted = clause + blankSpace + value;
+		}
+		if ('equals' === clause && 'all' === value) {
+			clause = ``;
+			formatted = clause + blankSpace;
+		}
+		if ('notequals' === clause && 'all' === value) {
+			clause = ``;
+			formatted = clause + blankSpace;
+		}
+		if ('other' === clause && null !== value) {
+			clause = `is other than`;
+			formatted = clause + blankSpace + value;
+		}
+		if ('oneof' === clause && null !== value) {
+			clause = `is one of`;
+			formatted = clause + blankSpace + value;
+		}
+		if ('notequals' === clause && null !== value && 'all' !== value) {
+			clause = `is not equal to`;
+			formatted = clause + blankSpace + value;
+		}
+		return formatted;
+	}
+
+	localTxnAmountValCellRenderer (params) {
+		var value = params.data.localTxnAmountVal,
+			clause = params.data.localTxnAmountClause,
+			formatted = '',
+			blankSpace = ' ';
+
+		if ('equals' === clause && null !== value) {
+			clause = `is equal to`;
+			formatted = clause + blankSpace + value;
+		}
+		if ('notequals' === clause && null !== value) {
+			clause = `is not equal to`;
+			formatted = clause + blankSpace + value;
+		}
+		return formatted;
+	}
+
+	timeValueCellRenderer (params) {
+		var value = params.data.timeValue,
+			unit = params.data.timeUnit,
+			formatted = '',
+			blankSpace = ' ';
+
+		if ('days' === unit && null !== value) {
+			unit = `days`;
+			formatted = value + blankSpace + unit;
+		}
+		if ('days' === unit && null !== value && '1' === value) {
+			unit = `day`;
+			formatted = value + blankSpace + unit;
+		}
+		if ('weeks' === unit && null !== value && '1' === value) {
+			unit = `week`;
+			formatted = value + blankSpace + unit;
+		}
+		if ('weeks' === unit && null !== value) {
+			unit = `weeks`;
+			formatted = value + blankSpace + unit;
+		}
+		if ('months' === unit && null !== value && '1' === value) {
+			unit = `month`;
+			formatted = value + blankSpace + unit;
+		}
+		if ('months' === unit && null !== value) {
+			unit = `months`;
+			formatted = value + blankSpace + unit;
+		}
+		return formatted;
+	}
+
+	lastUpdatedDateCellRenderer (params) {
+		if (params.value) {
+			var date = new Date(Number(params.value)),
+				year = date.getFullYear(),
+				mon = date.getMonth() + 1,
+				day = date.getDate(),
+				hr = date.getHours(),
+				min = date.getMinutes() + 1,
+				sec = date.getSeconds(),
+				formattedDate = '',
+				blankSpace = ' ';
+
+			if (mon < 10) {
+				mon = `0${ mon }`;
+			}
+			if (day < 10) {
+				day = `0${ day }`;
+			}
+			if (hr < 10) {
+				hr = `0${ hr }`;
+			}
+			if (min < 10) {
+				min = `0${ min }`;
+			}
+			if (sec < 10) {
+				sec = `0${ sec }`;
+			}
+			formattedDate = [ mon, day, year ].join('/') + blankSpace + [ hr, min, sec ].join(':');
+
+			return formattedDate;
+		}
+		return '';
+	}
+
+	coldefs (chbkx) {
+		var me = this;
+
+		return [
+			chbkx,
+			{
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.RULE_ID'],
+				field: 'ruleId',
+				width: 200,
+				colId: 'ruleId',
+				sort: 'asc'
+
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.STATUS'],
+				field: 'activeSW',
+				width: 200,
+				colId: 'activeSW',
+				cellRenderer: this.activeSWCellRenderer
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.LOCATION_ID'],
+				field: 'locationIdValue',
+				width: 220,
+				suppressSorting: true,
+				colId: 'locationIdValue'
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.ISSUER_COUNTRY'],
+				field: 'issuerCntryValue',
+				width: 280,
+				suppressSorting: true,
+				colId: 'issuerCntryValue',
+				cellRenderer: this.issuerCntryValueCellRenderer
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.LOCAL_CURRENCY_AMOUNT'],
+				field: 'localTxnAmountVal',
+				width: 280,
+				suppressSorting: true,
+				colId: 'localTxnAmountVal',
+				cellRenderer: this.localTxnAmountValCellRenderer
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.DATE_RANGE'],
+				field: 'timeValue',
+				width: 220,
+				colId: 'timeValue',
+				suppressSorting: true,
+				cellRenderer: this.timeValueCellRenderer
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.CREATED_DATE'],
+				field: 'createDate',
+				width: 250,
+				colId: 'createDate',
+				cellRenderer: this.createDateCellRenderer
+			}, {
+				headerName: me.locale['EDS.LIST_RULE_ITEMS.LAST_UPDATED_DATE'],
+				field: 'lastUpdatedDate',
+				width: 250,
+				colId: 'lastUpdatedDate',
+				cellRenderer: this.lastUpdatedDateCellRenderer
+			}
+		];
+	}
+	ruleIdCellRenderer (params) {
+		var value = params.data.ruleId;
+
+		if (!value || ' ' === value) {
+			value = params.data.tempRuleId;
+		}
+		return value;
+	}
+
+	onBeforeSortChanged () {
+		if (!this.sorting) {
+			const sortState = this.gridOptions.api.getSortModel();
+
+			if (0 === sortState.length) {
+				console.log('No sort active');
+			} else {
+				for (let i = 0; i < sortState.length; i++) {
+					const item = sortState[i];
+
+					this.sortField = item.colId;
+					this.sortOrder = item.sort;
+				}
+			}
+			this.attemptSort();
+		}
+	}
+
+	modelUpdated () {
+		this.gridOptions.api.hideOverlay();
+	}
+
+	selectAllRows (gridNodeList) {
+		console.log('selectAllRows');
+		const checkallElement = document.getElementById('checkall');
+
+		if (!checkallElement.checked) {
+			checkallElement.checked = true;
+		}
+
+		if (gridNodeList.node.data && -1 === this.deSelectedRulesArray.indexOf(gridNodeList.node.data.ruleId)) {
+			gridNodeList.node.setSelected(true);
+		} else {
+			console.log('else selectAllRows');
+			checkallElement.checked = false;
+		}
+	}
+
+	updateSelectedRules (event) {
+		const ruleId = event.node.data.ruleId,
+			index = this.deSelectedRulesArray.indexOf(ruleId),
+			length = this.deSelectedRulesArray.length;
+
+		if (event.node.selected) {
+			if (event.node.data.errorDescription) {
+				event.node.setSelected(false, true, true);
+			}
+			if (index !== -1) {
+				this.deSelectedRulesArray[index] = this.deSelectedRulesArray[length - 1];
+				this.deSelectedRulesArray.length -= 1;
+			}
+		} else if ('undefined' !== event.node) {
+			this.selectedRules.delete(event.node.data.ruleId);
+			if (!event.node.data.errorDescription) {
+				this.deSelectedRulesArray.push(event.node.data.ruleId)
+			};
+		}
+		//	this.disableDeactiveBtn = this.deSelectedRulesArray.length === JSON.parse(sessionStorage.getItem('validRuleIds')) ;
+		if (sessionStorage.getItem('validRuleIds').length > 0) {
+			this.totalSelectedRows = sessionStorage.getItem('validRuleIds').split(',').map(Number).length - this.deSelectedRulesArray.length;
+		} else {
+			this.totalSelectedRows = 0;
+		}
+		this.disableDeactiveBtn = 0 === this.totalSelectedRows;
+	}
+
+	attemptSort () {
+		if ('undefined' !== typeof this.sortField && 'undefined' !== typeof this.sortOrder) {
+			if (this.sortField !== this.currentSortField || this.sortOrder !== this.currentSortOrder) {
+				this.sorting = true;
+				this._sortData(this.sortField, this.sortOrder.toString().toUpperCase());
+				this.currentSortField = this.sortField;
+				this.currentSortOrder = this.sortOrder;
+				this.gridService.saveState('LIST_DEACTIVATE_RULE', this.gridOptions.api, this.gridOptions.columnApi);
+			}
+		}
+	}
+
+	_sortData (sortBy, sortOrder) {
+		this.gridOptions.api.showLoadingOverlay();
+		const serviceparms = [ `1` ];
+		let validRulesIdsList =	sessionStorage.getItem("validRuleIds");
+		const	validRuleIds = validRulesIdsList.split(',').map(Number);
+		//make a service call if validRulesIds are more than 1.
+		if (validRuleIds.length > 1) {
+			if (sortBy && sortOrder) {
+				serviceparms.push(sortBy);
+				serviceparms.push(sortOrder.toString().toUpperCase());
+			}
+			serviceparms.push(validRuleIds);
+			serviceparms.chunkSize = validRuleIds.length;
+
+			this.ruleService.fetchDeActivatedRules(serviceparms, validRuleIds.length).subscribe(response => {
+				this.gridOptions.api.hideOverlay();
+				this.currentSortOrder = this.sortOrder;
+				if (response) {
+					this.ruleData = response;
+					this.ruleListData = this.ruleData.ruleList;
+					let fileErrorIdArray = JSON.parse(sessionStorage.getItem('fileErrorResponse')).map(function (rule) { return rule.ruleId; });
+					let respValidIdArray = this.ruleData.ruleList.map(function (rule) { return rule.ruleId; });
+					const totalcppRulesIdsArray = fileErrorIdArray.concat(respValidIdArray);
+
+					sessionStorage.setItem('remainingRuleIds', totalcppRulesIdsArray);
+					let totalRecords = sessionStorage.getItem('remainingRuleIds').split(',').length;
+					const errorResp = JSON.parse(sessionStorage.getItem('fileErrorResponse')).length;
+
+					 if (errorResp > 25) {
+						this.ruleLists = JSON.parse(sessionStorage.getItem('fileErrorResponse')).splice(0, this.pagination.chunkSize);
+					} else if (errorResp < 25) {
+						if(this.ruleData.ruleList) {
+							this.ruleLists = JSON.parse(sessionStorage.getItem('fileErrorResponse')).concat(this.ruleListData).splice(0,this.pagination.chunkSize);
+						} else {
+							this.ruleLists = JSON.parse(sessionStorage.getItem('fileErrorResponse'));
+						}
+					}
+					this.startPageResp = {
+						chunk: '1',
+						chunkSize: this.pagination.chunkSize,
+						ruleList: JSON.stringify(this.ruleLists),
+						totalRecordFound: totalRecords
+					};
+					sessionStorage.setItem('startPageResp', JSON.stringify(this.startPageResp));
+					this.pagination.chunk = 0;
+					this.onBtnFirst();
+					this.sorting = false;
+				}
+			}, error => {
+				this.errorMessage = error;
+			});
+		}
+	}
+
+	onBtnFirst () {
+		this.pagination.chunk = 1;
+		const response = JSON.parse(sessionStorage.getItem('startPageResp'));
+		response.ruleList = JSON.parse(response.ruleList);
+		this.setPageData(response);
+	}
+
+	navigationPage (startIndex, endIndex, errorCount) {
+		let remainingRuleIds = sessionStorage.getItem('remainingRuleIds');
+		startIndex = 0 === errorCount ? startIndex : startIndex + errorCount;
+		if (remainingRuleIds) {
+			remainingRuleIds = remainingRuleIds.split(',');
+		}
+		return remainingRuleIds.splice(startIndex, endIndex - startIndex).map(Number);
+	}
+
+	getErrorRecords (startIndex, endIndex) {
+		let fileErrorResponse = sessionStorage.getItem('fileErrorResponse');
+		if (fileErrorResponse) {
+			fileErrorResponse = JSON.parse(fileErrorResponse);
+			this.errorCount = fileErrorResponse.length;
+			if (this.errorCount > startIndex && this.errorCount > endIndex) {
+				return fileErrorResponse.splice(startIndex, this.pagination.chunkSize);
+			} else if (this.errorCount > startIndex && this.errorCount < endIndex) {
+				return fileErrorResponse.splice(startIndex, this.pagination.chunkSize);
+			} else {
+				return [];
+			}
+		}
+	}
+
+	onBtnPrevious () {
+		this.pagination.chunk--;
+		const startIndex = (this.pagination.chunk - 1) * this.pagination.chunkSize;
+		const endIndex = (this.pagination.chunk) * this.pagination.chunkSize;
+		if (1 !== this.pagination.chunk) {
+			let errorRecords = this.getErrorRecords(startIndex, endIndex);
+			if (errorRecords.length < this.pagination.chunkSize) {
+				let prevPageRuleIds = this.navigationPage(startIndex, endIndex, errorRecords.length);
+				this._paginationService(prevPageRuleIds, errorRecords);
+			} else {
+				this.showErrorRecords(errorRecords);
+			}
+		} else {
+			let response = JSON.parse(sessionStorage.getItem('startPageResp'));
+			response.ruleList = JSON.parse(response.ruleList);
+			this.setPageData(response);
+		}
+	}
+
+	showErrorRecords (errorRecords) {
+		this.ruleData = errorRecords;
+		this.ruleData.chunk = this.pagination.chunk;
+		this.ruleData.chunkSize = this.pagination.chunkSize;
+		this.ruleData.ruleList = errorRecords;
+		this.ruleListData = this.ruleData.ruleList;
+		this.pagination.updatePage(this.ruleData);
+		this.gridService.loadState('LIST_DEACTIVATE_RULE', this.gridOptions.api, this.gridOptions.columnApi);
+	}
+
+	onBtnNext () {
+		this.pagination.chunk++;
+		const startIndex = (this.pagination.chunk - 1) * this.pagination.chunkSize;
+		const endIndex = (this.pagination.chunk) * this.pagination.chunkSize;
+		let errorRecords = this.getErrorRecords(startIndex, endIndex);
+		let nextPageRuleIds = this.navigationPage(startIndex, endIndex, errorRecords.length);
+		if (errorRecords.length < this.pagination.chunkSize && nextPageRuleIds.length > 0) {
+			this._paginationService(nextPageRuleIds, errorRecords);
+		} else {
+			this.showErrorRecords(errorRecords);
+		}
+	}
+
+	onBtnLast () {
+		this.pagination.chunk = this.pagination.totalPages;
+		const startIndex = (this.pagination.chunk - 1) * this.pagination.chunkSize;
+		const endIndex = (this.pagination.chunk) * this.pagination.chunkSize;
+		let errorRecords = this.getErrorRecords(startIndex, endIndex);
+		let nextPageRuleIds = this.navigationPage(startIndex, endIndex, errorRecords.length);
+		if (errorRecords.length < this.pagination.chunkSize && nextPageRuleIds.length > 0) {
+			this._paginationService(nextPageRuleIds, errorRecords);
+		} else {
+			this.showErrorRecords(errorRecords);
+		}
+	}
+
+	_paginationService (currentPageRuleIds, errorRecords) {
+		var serviceparms = [ `1` ];
+
+		this.gridOptions.api.showLoadingOverlay();
+		if (this.sortOrder && this.sortField) {
+			serviceparms.push(this.sortField);
+			serviceparms.push(this.sortOrder.toString().toUpperCase());
+		}
+
+		serviceparms.push(currentPageRuleIds);
+		this.ruleService.fetchDeActivatedRules(serviceparms, this.pagination.chunkSize).subscribe(response => {
+			if (response) {
+				this.ruleData = response;
+				this.ruleData.chunk = this.pagination.chunk;
+				this.ruleData.ruleList = errorRecords.concat(this.ruleData.ruleList);
+				this.ruleListData = this.ruleData.ruleList;
+				this.gridOptions.api.hideOverlay();
+				this.pagination.updatePage(this.ruleData);
+				this.gridService.loadState('LIST_DEACTIVATE_RULE', this.gridOptions.api, this.gridOptions.columnApi);
+			}
+		}, error => {
+			this.errorMessage = error;
+		});
+	}
+
+	onChunkChange (e) {
+		if (this.pageValue.control.status !== 'INVALID' && (13 === e.keyCode && this.pagination.chunkVal !== this.pagination.chunk)) {
+			if (this.pagination.chunkVal >= 1 && this.pagination.chunkVal <= this.pagination.totalPages) {
+				this.pagination.chunk = this.pagination.chunkVal;
+				const startIndex = (this.pagination.chunk - 1) * this.pagination.chunkSize;
+				const endIndex = this.pagination.chunk * this.pagination.chunkSize;
+				let errorRecords = this.getErrorRecords(startIndex, endIndex);
+				if (errorRecords.length < this.pagination.chunkSize) {
+					let nextPageRuleIds = this.navigationPage(startIndex, endIndex, errorRecords.length);
+					this._paginationService(nextPageRuleIds, errorRecords);
+				} else {
+					this.showErrorRecords(errorRecords);
+				}
+			} else {
+				this.pagination.chunkVal = this.pagination.chunk;
+			}
+		}
+	}
+	onCancelConfirmClickHandler () {
+		this.confirmationDialog.hide();
+	}
+
+	onOkClickHandler () {
+		//const totalRulesList = sessionStorage.getItem('totalcppRulesList'),
+		const totalRulesList = sessionStorage.getItem('remainingRuleIds'),
+			tolalRuleIds = totalRulesList.split(',').map(Number),
+			unselectedRulesList = this.deSelectedRulesArray;
+
+		unselectedRulesList.forEach(function (val) {
+			var foundIndex = tolalRuleIds.indexOf(val);
+
+			if (foundIndex != -1) {
+				tolalRuleIds.splice(foundIndex, 1);
+			}
+		});
+
+		let totalRules = {
+			'cppIds': tolalRuleIds
+		}
+		this.uploadService.getRuleDeactivationRequestUrl(totalRules).subscribe(response => {
+			if (response) {
+				console.log(response);
+			}
+		}, error => {
+			this.errorMessage = error;
+		});
+		this.confirmationDialog.hide();
+		this.router.navigate([ '/' ], { queryParams: { search: false } });
+		sessionStorage.removeItem('remainingRuleIds');
+		sessionStorage.removeItem('totalcppRulesList');
+		sessionStorage.removeItem('startPageResp');
+		sessionStorage.removeItem('validRuleIds');
+	}
+	deactiveSelectedRules () {
+		this.confirmationDialog.show();
+	}
+}
