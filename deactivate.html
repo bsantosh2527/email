@@ -1,0 +1,247 @@
+<style>
+    .red {
+        color: #FF0000;
+        font-weight:bold;
+    }
+    .green {
+        color: #008000;
+        font-weight:bold;
+    }
+    input[type=checkbox] {
+        width:15px;
+        height:15px;
+    }
+    .orange, .orange:hover {
+        color: #fff;
+        background-color: #ff9900;
+        /*font-weight:bold;*/
+    }
+    .grey, .grey:hover {
+        color: #fff;
+        background-color: #6f6b65;
+        /*font-weight:bold;*/
+    }
+
+    .ag-cell,
+    .ag-header-cell {
+        text-align: left !important;
+    }
+
+    .ag-header-cell-text {
+        color: #e87600;
+        text-align: left;
+    }
+    .icon-btn{
+        width : 20px;
+        height: 20px;
+    }
+
+    .no-record-alert {
+        overflow-y: auto;
+        width : 350Px;
+        height: 250px;
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        margin-left: -150px;
+        margin-top: -150px;
+    }
+
+    .bg-grey{
+        background-color:#dedede;
+    }
+
+    .top-buffer {
+        margin-top:20px;
+    }
+
+    table.grid-table {
+    .list-name-truncate {
+    div {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    }
+    }
+
+    td.list-description-truncate {
+    div {
+        max-width: 350px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    }
+
+    .ag-paging-panel {
+        padding: 4px;
+    }
+
+    .ag-paging-row-summary-panel
+    {
+        display: inline-block;
+        width: 300px;
+    }
+
+    .ag-paging-button
+    {
+        margin-left: 4px;
+        margin-right: 4px;
+    }
+
+    .ag-font-style
+    {
+        cursor: default;
+        /* disable user mouse selection */
+        user-select: none;
+    }
+
+    button:disabled, select:disabled, keygen:disabled, optgroup:disabled, option:disabled, select[disabled] > option {
+        color: graytext;
+    }
+    .noPaginationSpacer{
+        height: 66px;
+        display: block;
+    }
+    .btnicon {
+        padding-left: 12px;
+        padding-right: 12px;
+        min-width: auto;
+    }
+    .fldSml {
+        width: 5%;
+    }
+    .wid300 {
+        width: 300px;
+    }
+    .inline-message {
+        display: inline-block;
+        text-align: right;
+        vertical-align: top;
+        float: right;
+        padding-top: 0px;
+        margin-top: 0px;
+    }
+    .col1 {
+        width: 150px;
+    }
+    .col2 {
+        width: 100px;
+    }
+    .col3 {
+        width: 200px;
+    }
+    .sidebar {
+        z-index: 4000 !important;
+    }
+
+    div.fake-last.input-group-addon {
+        border-radius: 4px;
+        border-left: 0;
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+    }
+
+    .btnIcon {
+        padding-left: 12px;
+        padding-right: 12px;
+        min-width: auto;
+    }
+    .modal-body {
+        font-size: 20px !important;
+    }
+    .modal-content {
+        width: 1000px; /* New width for large modal */
+    }
+    .modal-header {
+        display: none;
+    }
+    .modal-footer {
+        background-color: #ffffff !important;
+        border: none !important;
+    }
+    .select-row-count {
+        font-size: 16px;
+        margin-top: 10px;
+        display: inline-block;
+        margin-left: 20px;
+    }
+
+    .lable-top{
+        margin-top : 10px !important;
+    }
+</style>
+
+
+    <div class="row">
+        <div class="col-md-12">
+            <nav class="clearfix">
+                <div class="btn-toolbar" role="toolbar">
+                    <h3 class="pull-left lable-top">Select Rules to Deactivate </h3>
+                    <span class="select-row-count">{{this.totalSelectedRows}} Rules Selected</span>
+                    <button class="btn primary pull-right" (click)= "deactiveSelectedRules()" [disabled]="disableDeactiveBtn">Deactivate</button>
+                  <!--  <button class="btn primary">Activate</button>  -->
+                   <!-- <div class="btn-group pull-right">
+                        <button type="button" class="btn btnIcon" (click) ="downloadRule()" [disabled]="disableDownloadButton == 'true'" title="Download Rule" >
+                            <span class="fa fa-2x fa-download"></span>
+                        </button>
+                        <button type="button" class="btn btnIcon" (click) ="updateRule()" [disabled]="totalSelectedInPage == 0" title="Update Rule" >
+                            <span class="fa fa-2x fa-pencil-square-o"></span>
+                        </button>
+                        <grid-refresh (refresh)="loadRuleList ()" title="Refresh List of Rules"></grid-refresh>
+                    </div> -->
+                </div>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row top-buffer">
+        <div class="col-md-12" (window:resize)="onResize ($event)">
+            <ag-grid-ng2 #uploadList [style.width]="width" [style.height]="height" class="ag-bootstrap"
+                         [gridOptions]="gridOptions"
+                         [columnDefs]="ruleColumnDefs"
+                         [rowData]="ruleListData"
+                         (modelUpdated)="modelUpdated ($event)"
+                         (beforeSortChanged)="onBeforeSortChanged ()">
+            </ag-grid-ng2>
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="ag-paging-panel ag-font-style" *ngIf="pagination.totalPages > 1">
+						<span id="pageRowSummaryPanel" class="ag-paging-row-summary-panel wid300">
+							<span *ngIf="pagination.totalPages == 0"> 0</span>
+							<span *ngIf="pagination.chunk == 1 && pagination.totalPages > 0"> 1</span>
+							<span *ngIf="pagination.chunk > 1">{{( pagination.chunkSize * (pagination.chunk-1) ) + 1 }}</span> to
+							<span *ngIf="pagination.chunk!=pagination.totalPages">{{pagination.recsInPage * pagination.chunk}}</span>
+							<span *ngIf="pagination.chunk==pagination.totalPages"> {{(pagination.chunk-1)*pagination.chunkSize + pagination.recsInPage}}</span>
+							of <span>  {{pagination.rowCount}}</span>
+							<span class='help-block inline-message' *ngIf="pageValue.invalid && !pageValue.pristine">
+								<span class="text-danger" *ngIf="pageValue.errors?.required">{{'EDS.VALIDATION.PAGE_REQUIRED' | translate}}</span>
+								<span class="text-danger" *ngIf="pageValue.errors?.minValue && !pageValue.errors?.numeric">{{'EDS.VALIDATION.PAGE_MIN_LENGTH' | translate}}</span>
+								<span class="text-danger" *ngIf="pageValue.errors?.maxValue && !pageValue.errors?.numeric">{{'EDS.VALIDATION.PAGE_MAX_LENGTH' | translate}}</span>
+								<span class="text-danger" *ngIf="pageValue.errors?.numeric">{{'EDS.VALIDATION.PAGE_INVALID_INPUT' | translate}}</span>
+							</span>
+						</span>
+                        <span class="ag-paging-page-summary-panel">
+							<button type="button" class="btn secondary ag-paging-button" (click)="onBtnFirst()" [disabled]="pagination.chunk <= 1"> First</button>
+							<button type="button" class="btn secondary ag-paging-button" (click)="onBtnPrevious()"
+                                    [disabled]="pagination.chunk <= 1"> Previous</button>
+							Page <input class="fldSml" type="text" name="pageValue" [(ngModel)]="pagination.chunkVal" [minValue]="1" [maxValue]="pagination.totalPages"
+                                        ngControl="pageValue" #pageValue="ngModel"
+                                        [disabled]="pagination.totalPages <= 1" (keyup)="onChunkChange($event)" required numeric width="4">
+							of <span> {{(pagination.totalPages)}} </span>
+							<button type="button" class="btn secondary ag-paging-button" (click)="onBtnNext()"
+                                    [disabled]="pagination.chunk >= pagination.totalPages"> Next</button>
+							<button type="button" class="btn secondary ag-paging-button" (click)="onBtnLast()"
+                                    [disabled]="pagination.chunk >= pagination.totalPages"> Last</button>
+						</span>
+                    </div>
+                    <div class="noPaginationSpacer" *ngIf="!pagination.totalPages || 1 === pagination.totalPages">&nbsp;</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+<confirm-dialog  #confirmationDialog   [message]="confirmationMessage" [title]="confirmDialogTitle"  (onCancelClick)="onCancelConfirmClickHandler()" (onOkClick)="onOkClickHandler()" ></confirm-dialog>
